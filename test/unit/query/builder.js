@@ -9065,6 +9065,8 @@ describe('QueryBuilder', () => {
           'with `withClause` as (select `foo` from `users`) insert into `users` select * from "withClause"',
         pg:
           'with "withClause" as (select "foo" from "users") insert into "users" select * from "withClause"',
+        oracledb:
+          'insert into "users" with "withClause" as (select "foo" from "users") select * from "withClause"',
       }
     );
   });
@@ -9370,8 +9372,6 @@ describe('QueryBuilder', () => {
           'with recursive "firstWithClause" as (with recursive "firstWithSubClause" as ((select "foo" from "users") as "foz") select * from "firstWithSubClause"), "secondWithClause" as (with recursive "secondWithSubClause" as ((select "bar" from "users") as "baz") select * from "secondWithSubClause") select * from "secondWithClause"',
         'pg-redshift':
           'with recursive "firstWithClause" as (with recursive "firstWithSubClause" as ((select "foo" from "users") as "foz") select * from "firstWithSubClause"), "secondWithClause" as (with recursive "secondWithSubClause" as ((select "bar" from "users") as "baz") select * from "secondWithSubClause") select * from "secondWithClause"',
-        oracledb:
-          'with recursive "firstWithClause" as (with recursive "firstWithSubClause" as ((select "foo" from "users") "foz") select * from "firstWithSubClause"), "secondWithClause" as (with recursive "secondWithSubClause" as ((select "bar" from "users") "baz") select * from "secondWithSubClause") select * from "secondWithClause"',
       }
     );
   });
@@ -9860,6 +9860,35 @@ describe('QueryBuilder', () => {
             'select "p"."ID" "id", "p"."post_status" "status", "p"."post_title" "name", "price"."meta_value" "price", "p"."post_date_gmt" "createdAt", "p"."post_modified_gmt" "updatedAt" from "wp_posts" "p" left join "wp_postmeta" "price" on ("price"."meta_key" = ? and "price_meta_key" = ?) or ("price_meta"."key" = ?)',
           bindings: ['_regular_price', '_regular_price', '_regular_price'],
         },
+      }
+    );
+  });
+
+  it("#3777 recursive 'with' in oracle has to include columns", () => {
+    testsql(
+      qb()
+        .withRecursive(
+          'descendants',
+          (qb1) =>
+            qb1
+              .select('treenode.id', 'treenode.name', 'treenode.parentId')
+              .from('treenode')
+              .whereNull('parentId')
+              .unionAll((qb2) =>
+                qb2
+                  .select('treenode.id', 'treenode.name', 'treenode.parentId')
+                  .from('treenode')
+                  .join('descendants', 'descendants.id', 'treenode.parentId')
+              ),
+          ['id', 'name', 'parentId']
+        )
+        .select('*')
+        .from('descendants'),
+      {
+        sqlite3:
+          'with recursive `descendants` as (select `treenode`.`id`, `treenode`.`name`, `treenode`.`parentId` from `treenode` where `parentId` is null union all select `treenode`.`id`, `treenode`.`name`, `treenode`.`parentId` from `treenode` inner join `descendants` on `descendants`.`id` = `treenode`.`parentId`) select * from `descendants`',
+        oracledb:
+          'with "descendants" ("id", "name", "parentId") as (select "treenode"."id", "treenode"."name", "treenode"."parentId" from "treenode" where "parentId" is null union all select "treenode"."id", "treenode"."name", "treenode"."parentId" from "treenode" inner join "descendants" on "descendants"."id" = "treenode"."parentId") select * from "descendants"',
       }
     );
   });
